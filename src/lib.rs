@@ -2,36 +2,41 @@
 //! Rust Firebird Client
 //!
 
-#[cfg(test)]
-#[macro_use]
-pub(crate) mod tests;
+//#[cfg(test)]
+//#[macro_use]
+//pub(crate) mod tests;
 
-pub mod prelude {
-    pub use crate::query::{Execute, Queryable};
-    pub use rsfbclient_derive::IntoParams;
-}
+//pub mod prelude {
+//  pub use crate::query::{Execute, Queryable};
+//}
 
-mod connection;
-mod query;
-mod statement;
-mod transaction;
+mod cache_client;
+mod mock_client;
 
-pub use crate::{
-    connection::{Connection, ConnectionConfiguration, FirebirdClientFactory},
-    query::{Execute, Queryable},
-    statement::Statement,
-    transaction::Transaction,
-};
-pub use rsfbclient_core::{
-    Column, Dialect, FbError, FromRow, IntoParam, IntoParams, ParamsType, Row, SqlType,
-};
+mod raw_handles;
+mod wrappers;
 
-#[doc(hidden)]
-pub use rsfbclient_core::{charset, Charset};
 
 #[cfg(feature = "pool")]
-pub use crate::connection::pool::FirebirdConnectionManager;
+mod pool;
+#[cfg(feature = "pool")]
+pub use pool::FirebirdConnectionManager;
 
-//builders are behind feature gates inside this module
-pub use crate::connection::builders;
-pub use builders::*;
+//mod connection;
+//mod statement;
+//mod transaction;
+//mod named_params;
+
+//pub use crate::{
+//    connection::{Connection, ConnectionConfiguration, FirebirdClientFactory},
+//    query::{Execute, Queryable},
+//    statement::Statement,
+//    transaction::Transaction,
+// //   namedparams::NamedParams,
+//};
+//pub use rsfbclient_core::{Column, Dialect, FbError, FromRow, Row, SqlType};
+
+//#[doc(hidden)]
+//pub use rsfbclient_core::{charset, Charset};
+
+

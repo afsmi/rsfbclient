@@ -8,6 +8,8 @@ pub(crate) mod status;
 pub(crate) mod varchar;
 pub(crate) mod xsqlda;
 
-pub use connection::{NativeFbAttachmentConfig, NativeFbClient, RemoteConfig};
+//mod builder_native;
+//pub use builder_native::*;
 
+pub use connection::{NativeFbAttachmentConfig, NativeFbClient, RemoteConfig};
 pub use connection::{DynLink, DynLoad, LinkageMarker};

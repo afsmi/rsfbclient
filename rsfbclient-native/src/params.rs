@@ -157,7 +157,7 @@ impl ParamBuffer {
     ) -> Result<Self, FbError> {
         let mut null = 0;
 
-        let (sqltype, sqlsubtype) = info.sql_type_and_subtype();
+        let (sqltype, sqlsubtype) = info.clone().into();
         var.sqltype = sqltype as i16;
         var.sqlsubtype = sqlsubtype as i16;
         var.sqlscale = 0;

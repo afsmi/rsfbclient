@@ -191,6 +191,7 @@ impl FirebirdClientSqlOps for RustFbClient {
             .unwrap_or_else(err_client_not_connected)
     }
 
+
     fn execute(
         &mut self,
         _db_handle: &mut Self::DbHandle,

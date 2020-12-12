@@ -22,13 +22,23 @@ pub struct NativeFbClient<T: LinkageMarker> {
     charset: Charset,
 }
 
-/// The remote part of native client configuration
+
+
 #[derive(Clone, Default)]
 pub struct RemoteConfig {
     pub host: String,
     pub port: u16,
     pub pass: String,
 }
+
+#[derive(Clone, Default)]
+pub struct NativeFbAttachmentConfig {
+    pub db_name: String,
+    pub user: String,
+    pub remote: Option<RemoteConfig>,
+}
+
+
 
 /// Data associated with a prepared statement
 pub struct StmtHandleData {
@@ -40,13 +50,6 @@ pub struct StmtHandleData {
     col_buffers: Vec<ColumnBuffer>,
 }
 
-///The common part of native client configuration (for both embedded/remote)
-#[derive(Clone, Default)]
-pub struct NativeFbAttachmentConfig {
-    pub db_name: String,
-    pub user: String,
-    pub remote: Option<RemoteConfig>,
-}
 
 /// A marker trait which can be used to
 /// obtain the associated client instance

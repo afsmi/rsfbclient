@@ -1,0 +1,6 @@
+- Fix tuple impls for intoparams, fromrow using proc macro
+
+- figure out params borrowed instance
+
+- drop connection properly
+

@@ -6,69 +6,46 @@
 
 use crate::{
     transaction::{Transaction, TransactionData},
-    Connection,
+    Connection
 };
 use rsfbclient_core::{
-    Column, FbError, FirebirdClient, FreeStmtOp, FromRow, IntoParams, NamedParams, StmtType,
+    Column, FbError, FirebirdClient, FreeStmtOp, FromRow, StmtType, IntoStmtArgs
+    , DynParam, DynParams
 };
+use std::marker::PhantomData;
 
+pub(crate) enum StmtDropBehavior {
+  DropStmt,
+  CacheStmt
+}
+
+trait IntoParams : IntoStmtArgs<Idx=DynParam>{}
+impl<T:IntoStmtArgs<Idx=DynParam>> IntoParams for T{}
+
+/// Low level statement handler.
+///
+/// Needs to be closed calling `close` before dropping.
+pub struct StatementData<C: FirebirdClient> {
+    pub(crate) sql: String,
+    pub(crate) handle: C::StmtHandle,
+    pub(crate) stmt_type: StmtType,
+}
+ 
 pub struct Statement<'c, 't, C: FirebirdClient> {
     pub(crate) data: StatementData<C>,
+    drop_behavior: StmtDropBehavior,
     pub(crate) tr: &'t mut Transaction<'c, C>,
 }
 
-impl<'c, 't, C> Statement<'c, 't, C>
-where
-    C: FirebirdClient,
-{
-    /// Prepare the statement that will be executed
-    pub fn prepare(
-        tr: &'t mut Transaction<'c, C>,
-        sql: &str,
-        named_params: bool,
-    ) -> Result<Self, FbError> {
-        let data = StatementData::prepare(tr.conn, &mut tr.data, sql, named_params)?;
-
-        Ok(Statement { data, tr })
-    }
-
-    /// Execute the current statement without returnig any row
-    ///
-    /// Use `()` for no parameters or a tuple of parameters
-    pub fn execute<T>(&mut self, params: T) -> Result<(), FbError>
-    where
-        T: IntoParams,
-    {
-        self.data.execute(self.tr.conn, &mut self.tr.data, params)
-    }
-
-    /// Execute the current statement
-    /// and returns the lines founds
-    ///
-    /// Use `()` for no parameters or a tuple of parameters
-    pub fn query<'s, R, P>(&'s mut self, params: P) -> Result<StatementFetch<'c, 's, R, C>, FbError>
-    where
-        R: FromRow,
-        P: IntoParams,
-    {
-        self.data.query(self.tr.conn, &mut self.tr.data, params)?;
-
-        Ok(StatementFetch {
-            stmt: &mut self.data,
-            tr: self.tr,
-            _marker: Default::default(),
-        })
-    }
+pub struct StmtIter<'c, 't, R, C>
+  where
+  C:FirebirdClient,
+  R: FromRow {
+    base_iter: Statement<'c,'t, C>,
+    //maybe can be replaced by R: TryFrom<Vec<Column>>
+    _marker: PhantomData<R>,
 }
 
-impl<C> Drop for Statement<'_, '_, C>
-where
-    C: FirebirdClient,
-{
-    fn drop(&mut self) {
-        self.data.close(self.tr.conn).ok();
-    }
-}
 /// Cursor to fetch the results of a statement
 pub struct StatementFetch<'c, 's, R, C: FirebirdClient> {
     pub(crate) stmt: &'s mut StatementData<C>,
@@ -78,75 +55,162 @@ pub struct StatementFetch<'c, 's, R, C: FirebirdClient> {
     _marker: std::marker::PhantomData<R>,
 }
 
-impl<'c, 's, R, C> StatementFetch<'c, 's, R, C>
+impl<C:FirebirdClient> Drop for Statement<'_, '_, C>
+{
+    fn drop(&mut self) {
+      use StmtDropBehavior::*;
+
+      match self.drop_behavior {
+        DropStmt => {
+          self.tr.conn.client().free_statement(
+            &mut self.data.handle,
+            FreeStmtOp::Drop
+          );
+        }
+        CacheStmt => {
+          self.tr.conn.client().free_statement(
+            &mut self.data.handle,
+            FreeStmtOp::Close
+          );
+          self.tr.conn.stmt_cache.insert(self.data);
+        }
+      }
+    }
+}
+
+impl<C> Iterator for Statement<'_, '_, C>
+where
+    C: FirebirdClient,
+{
+    type Item = Result<Vec<Column>, FbError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self
+          .tr
+          .conn
+          .client()
+          .fetch(
+            &mut self.tr.conn.handle,
+            &mut self.tr.data.handle,
+            &mut self.data.handle
+          )
+          .transpose()
+    }
+}
+
+
+impl<R, C> Iterator for StmtIter<'_, '_, R, C>
 where
     R: FromRow,
     C: FirebirdClient,
 {
-    /// Fetch for the next row
-    pub fn fetch(&mut self) -> Result<Option<R>, FbError> {
-        self.stmt
-            .fetch(self.tr.conn, &mut self.tr.data)
-            .and_then(|row| row.map(FromRow::try_from).transpose())
-    }
-}
-
-impl<T, C> Iterator for StatementFetch<'_, '_, T, C>
-where
-    T: FromRow,
-    C: FirebirdClient,
-{
-    type Item = Result<T, FbError>;
+    type Item = Result<R, FbError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.fetch().transpose()
+        self
+          .base_iter
+          .next()
+          .map(|maybe_row_untyped| maybe_row_untyped.and_then(FromRow::try_from) )
+
     }
 }
 
-impl<R, C> Drop for StatementFetch<'_, '_, R, C>
+
+
+impl<C:FirebirdClient> AsRef<str> for StatementData<C> {
+  fn as_ref(&self) -> &str {
+    self.sql.as_ref()
+  }
+}
+
+
+
+
+impl<'c, 't, C> Statement<'c, 't, C>
 where
     C: FirebirdClient,
 {
-    fn drop(&mut self) {
-        self.stmt.close_cursor(self.tr.conn).ok();
-    }
-}
+      
+    /// Prepare the statement that will be executed
+    pub fn prepare<Sql:AsRef<str>>(
+        tr: &'t mut Transaction<'c, C>,
+        sql: Sql,
+    ) -> Result<Self, FbError> {
 
-/// Low level statement handler.
-///
-/// Needs to be closed calling `close` before dropping.
-pub struct StatementData<C: FirebirdClient> {
-    pub(crate) handle: C::StmtHandle,
-    pub(crate) stmt_type: StmtType,
-    named_params: NamedParams,
+        let raw_sql = sql.as_ref();
+        let data = StatementData::prepare(
+          tr.conn,
+          &mut tr.data,
+          raw_sql
+        )?;
+
+        Ok(Statement {
+          data,
+          drop_behavior: StmtDropBehavior::DropStmt,
+          tr
+        })
+    }
+
+    /// Execute the current statement without returnig any row
+    ///
+    /// Use `()` for no parameters or a tuple of parameters
+    pub fn execute<P>(&mut self, params: P) -> Result<(), FbError>
+      where P: IntoStmtArgs<Idx=DynParam>
+    {
+        self.data.execute(
+          self.tr.conn,
+          &mut self.tr.data,
+          DynParams::params(params)
+        )
+    }
+
+    /// Execute the current statement
+    /// and returns the lines founds
+    ///
+    /// Use `()` for no parameters or a tuple of parameters
+    pub fn query<'s, R, P>(&'s mut self, params: P) -> Result<StatementFetch<'c, 's, R, C>, FbError>
+    where
+        R: FromRow,
+        P: IntoStmtArgs<Idx=DynParam>,
+    {
+            self.data.query(
+              self.tr.conn,
+              &mut self.tr.data,
+              DynParams::params(params)
+            )?;
+
+            Ok(StatementFetch {
+                stmt: &mut self.data,
+                tr: self.tr,
+                _marker: Default::default(),
+            })
+          
+    }
 }
 
 impl<C: FirebirdClient> StatementData<C>
-where
-    C::StmtHandle: Send,
 {
     /// Prepare the statement that will be executed
-    pub fn prepare(
+    pub fn prepare<Sql:AsRef<str>>(
         conn: &mut Connection<C>,
         tr: &mut TransactionData<C>,
-        raw_sql: &str,
-        named_params: bool,
+        sql: Sql,
     ) -> Result<Self, FbError> {
-        let named_params = if named_params {
-            NamedParams::parse(raw_sql)?
-        } else {
-            NamedParams::empty(raw_sql)
-        };
-        let sql = &named_params.sql;
 
+        let raw_sql = sql.as_ref();
         let (stmt_type, handle) =
-            conn.cli
-                .prepare_statement(&mut conn.handle, &mut tr.handle, conn.dialect, sql)?;
+            conn.client()
+                .prepare_statement(
+                  &mut conn.handle,
+                  &mut tr.handle,
+                  conn.dialect,
+                  raw_sql,
+                )?;
 
         Ok(Self {
+            sql: raw_sql.to_string(),
             stmt_type,
             handle,
-            named_params,
         })
     }
 
@@ -160,13 +224,14 @@ where
         params: T,
     ) -> Result<(), FbError>
     where
-        T: IntoParams,
+        T: IntoStmtArgs<Idx=DynParam>,
     {
-        conn.cli.execute(
+
+        conn.client().execute(
             &mut conn.handle,
             &mut tr.handle,
             &mut self.handle,
-            self.named_params.convert(params)?,
+            DynParams::params(params)
         )?;
 
         if self.stmt_type == StmtType::Select {
@@ -187,13 +252,13 @@ where
         params: T,
     ) -> Result<Vec<Column>, FbError>
     where
-        T: IntoParams,
+        T: IntoStmtArgs<Idx=DynParam>,
     {
-        conn.cli.execute2(
+        conn.client().execute2(
             &mut conn.handle,
             &mut tr.handle,
             &mut self.handle,
-            self.named_params.convert(params)?,
+            DynParams::params(params)
         )
     }
 
@@ -208,13 +273,13 @@ where
         params: T,
     ) -> Result<(), FbError>
     where
-        T: IntoParams,
+        T: IntoStmtArgs<Idx=DynParam>,
     {
-        conn.cli.execute(
+        conn.client().execute(
             &mut conn.handle,
             &mut tr.handle,
             &mut self.handle,
-            self.named_params.convert(params)?,
+            DynParams::params(params)
         )
     }
 
@@ -224,18 +289,28 @@ where
         conn: &mut Connection<C>,
         tr: &mut TransactionData<C>,
     ) -> Result<Option<Vec<Column>>, FbError> {
-        conn.cli
-            .fetch(&mut conn.handle, &mut tr.handle, &mut self.handle)
+        conn.client()
+            .fetch(
+              &mut conn.handle,
+              &mut tr.handle,
+              &mut self.handle
+            )
     }
 
     /// Closes the statement cursor, if it was open
     pub fn close_cursor(&mut self, conn: &mut Connection<C>) -> Result<(), FbError> {
-        conn.cli.free_statement(&mut self.handle, FreeStmtOp::Close)
+        conn.client().free_statement(
+          &mut self.handle,
+          FreeStmtOp::Close
+        )
     }
 
     /// Closes the statement
     pub fn close(&mut self, conn: &mut Connection<C>) -> Result<(), FbError> {
-        conn.cli.free_statement(&mut self.handle, FreeStmtOp::Drop)
+        conn.client().free_statement(
+          &mut self.handle,
+          FreeStmtOp::Drop
+        )
     }
 }
 
@@ -288,11 +363,15 @@ mk_tests_default! {
 
         conn.with_transaction(|tr| {
             let mut stmt = tr
-                .prepare(&format!("insert into {} (id, name) values (?, ?)", table), false)
+                .prepare(
+                  &format!("insert into {} (id, name) values (?, ?)", table),
+                  false
+                )
                 .expect("Error preparing the insert statement");
 
             for val in &vals {
-                stmt.execute(val.clone()).expect("Error on insert");
+                stmt.execute(val.clone())
+                  .expect("Error on insert");
             }
 
             Ok(())

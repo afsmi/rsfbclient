@@ -17,7 +17,7 @@ use syn::{Data, DataStruct, DeriveInput, Fields};
 ///
 /// Providing an instance of the struct with value `None` for such a field corresponds to
 /// passing a `null` value for that field.
-#[proc_macro_derive(IntoParams)]
+#[proc_macro_derive(IntoNamedParams)]
 pub fn into_params_derive(input: TokenStream) -> TokenStream {
     let input = syn::parse_macro_input!(input as DeriveInput);
 
@@ -38,19 +38,116 @@ pub fn into_params_derive(input: TokenStream) -> TokenStream {
         });
 
     let st_impl = quote! {
-        use rsfbclient::{IntoParams, IntoParam, ParamsType};
+        use rsfbclient::{IntoStmtArgs, IntoParam, NamedParams};
         use std::collections::HashMap;
 
-        impl IntoParams for #st_name {
-            fn to_params(self) -> ParamsType {
+        impl IntoNamedParams for #st_name {
+            fn into_named_params(self) -> NamedParams {
                 let mut params = HashMap::new();
 
                 #(params.insert(#st_fields_params));*;
 
-                ParamsType::Named(params)
+                NamedParams(params)
             }
         }
     };
 
     TokenStream::from(st_impl)
 }
+
+//todo: Tuple params
+//#[proc_macro]
+//pub fn make_answer(_item: TokenStream) -> TokenStream {
+//    "fn answer() -> u32 { 42 }".parse().unwrap()
+//}
+//
+//
+/////
+///// Generates FromRow implementations for various tuples
+//macro_rules! impls_into_args {
+//    ([$t: ident, $v: ident]) => {
+//        impl_into_args!([$t, $v]);
+//    };
+//
+//    ([$t: ident, $v: ident], $([$ts: ident, $vs: ident]),+ ) => {
+//        impls_into_args!($([$ts, $vs]),+);
+//
+//        impl_into_args!([$t, $v], $([$ts, $vs]),+);
+//    };
+//}
+//
+//impls_into_args!(
+//    [A, a],
+//    [B, b],
+//    [C, c],
+//    [D, d],
+//    [E, e],
+//    [F, f],
+//    [G, g],
+//    [H, h],
+//    [I, i],
+//    [J, j],
+//    [K, k],
+//    [L, l],
+//    [M, m],
+//    [N, n],
+//    [O, o]
+//);
+//
+//macro_rules! impl_into_args {
+//    ( $([$t: ident, $v: ident]),+ ) => {
+//        impl<$($t),+> IntoStmtArgs for ($($t,)+)
+//        where
+//            $( $t: IntoStmtArg, )+
+//        {
+//            fn to_args(self) -> Vec<SqlType> {
+//                let ( $($v,)+ ) = self;
+//
+//                vec![ $(
+//                    $v.into_arg(),
+//                )+ ]
+//            }
+//        }
+//    };
+//}
+///// Generates FromRow implementations for a tuple
+//macro_rules! impl_from_row {
+//    ($($t: ident),+) => {
+//        impl<'a, $($t),+> FromRow for ($($t,)+)
+//        where
+//            $( Column: ColumnToVal<$t>, )+
+//        {
+//            fn try_from(row: Vec<Column>) -> Result<Self, FbError> {
+//                let len = row.len();
+//                let mut iter = row.into_iter();
+//
+//                Ok(( $(
+//                    ColumnToVal::<$t>::to_val(
+//                        iter
+//                            .next()
+//                            .ok_or_else(|| {
+//                                FbError::Other(
+//                                    format!("The sql returned less columns than the {} expected", len),
+//                                )
+//                            })?
+//                    )?,
+//                )+ ))
+//            }
+//        }
+//    };
+//}
+//
+///// Generates FromRow implementations for various tuples
+//macro_rules! impls_from_row {
+//    ($t: ident) => {
+//        impl_from_row!($t);
+//    };
+//
+//    ($t: ident, $($ts: ident),+ ) => {
+//        impls_from_row!($($ts),+);
+//
+//        impl_from_row!($t, $($ts),+);
+//    };
+//}
+//
+//impls_from_row!(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z);

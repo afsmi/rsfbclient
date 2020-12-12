@@ -93,6 +93,21 @@ pub trait FirebirdClientSqlOps {
         op: FreeStmtOp,
     ) -> Result<(), FbError>;
 
+    fn drop_statement(
+        &mut self,
+        mut stmt_handle: Self::StmtHandle,
+    ) -> Result<(), FbError> {
+      self.free_statement(&mut stmt_handle, FreeStmtOp::Drop)
+    }
+
+    fn close_statement(
+        &mut self,
+        stmt_handle: &mut Self::StmtHandle,
+    ) -> Result<(), FbError> {
+      self.free_statement(stmt_handle, FreeStmtOp::Close)
+    }
+
+
     /// Execute the prepared statement with parameters
     fn execute(
         &mut self,

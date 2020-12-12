@@ -9,6 +9,9 @@ mod util;
 mod wire;
 mod xsqlda;
 
+//mod builder_pure_rust;
+//pub use builder_pure_rust::*;
+
 pub use client::{DbHandle, RustFbClient, RustFbClientAttachmentConfig, StmtHandle, TrHandle};
 
 #[cfg(feature = "fuzz_testing")]

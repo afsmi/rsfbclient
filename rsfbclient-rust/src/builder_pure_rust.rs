@@ -1,17 +1,17 @@
 use super::*;
 use crate::{charset, Charset};
-use rsfbclient_rust::{RustFbClient, RustFbClientAttachmentConfig};
+use crate::{RustFbClient, RustFbClientAttachmentConfig};
 
-impl FirebirdClientFactory for PureRustConnectionBuilder {
-    type C = RustFbClient;
-    fn new_instance(&self) -> Result<Self::C, FbError> {
-        Ok(RustFbClient::new(self.1.clone()))
-    }
-
-    fn get_conn_conf(&self) -> &ConnectionConfiguration<RustFbClientAttachmentConfig> {
-        &self.0
-    }
-}
+//impl FirebirdClientFactory for PureRustConnectionBuilder {
+//    type C = RustFbClient;
+//    fn new_instance(&self) -> Result<Self::C, FbError> {
+//        Ok(RustFbClient::new(self.1.clone()))
+//    }
+//
+//    fn get_conn_conf(&self) -> &ConnectionConfiguration<RustFbClientAttachmentConfig> {
+//        &self.0
+//    }
+//}
 
 /// A builder for a firebird client implemented in pure rust.
 /// Does not currently support embedded connections.
@@ -71,12 +71,6 @@ impl PureRustConnectionBuilder {
     /// SQL Dialect. Default: 3
     pub fn dialect(&mut self, dialect: Dialect) -> &mut Self {
         self.0.dialect = dialect;
-        self
-    }
-
-    /// Statement cache size. Default: 20
-    pub fn stmt_cache_size(&mut self, stmt_cache_size: usize) -> &mut Self {
-        self.0.stmt_cache_size = stmt_cache_size;
         self
     }
 

@@ -1,10 +1,21 @@
 use super::*;
 use std::marker::PhantomData;
 
-#[doc(hidden)]
-pub use rsfbclient_native::{DynLink, DynLoad};
+use super::{
+  DynLink,
+  DynLoad,
+  LinkageMarker,
+  NativeFbAttachmentConfig,
+  NativeFbClient,
+  RemoteConfig
+};
 
-use rsfbclient_native::{LinkageMarker, NativeFbAttachmentConfig, NativeFbClient, RemoteConfig};
+use rsfbclient_core::{
+  Charset,
+  Dialect,
+  FbError,
+  FirebirdClient,
+};
 
 //used as markers
 #[doc(hidden)]

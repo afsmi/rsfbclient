@@ -11,6 +11,7 @@ license = "MIT"
 readme = "README.md"
 
 [dependencies]
+regex = "1.4"
 chrono = { version = "0.4", optional = true }
 lru-cache = "0.1.2"
 r2d2 = { version = "0.8.9", optional = true }
